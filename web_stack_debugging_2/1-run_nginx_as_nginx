@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Configure Nginx to run as nginx and listen on port 8080
+
+set -e
+
+# Create nginx user if it does not exist
+if ! id nginx >/dev/null 2>&1; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin nginx
+fi
+
+# Stop any existing Nginx service
+service nginx stop || true
+
+# Stop an existing Nginx master using its current PID file
+if [ -s /tmp/nginx.pid ]; then
+    old_pid=$(cat /tmp/nginx.pid)
+    kill -QUIT "$old_pid" 2>/dev/null || true
+    while kill -0 "$old_pid" 2>/dev/null; do
+        sleep 1
+    done
+fi
+
+# Configure Nginx
+sed -i 's/^user www-data;/user nginx;/' /etc/nginx/nginx.conf
+sed -i 's|^pid .*;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf
+
+# Change listening ports to 8080
+sed -i 's/listen 80 default_server;/listen 8080 default_server;/' /etc/nginx/sites-enabled/default
+sed -i 's/listen \[::\]:80 default_server/listen [::]:8080 default_server/' /etc/nginx/sites-enabled/default
+
+# Set directory permissions
+chown -R nginx:nginx /var/log/nginx /var/lib/nginx
+
+# Remove stale PID file
+rm -f /tmp/nginx.pid
+
+# Test configuration as nginx
+su -s /bin/sh nginx -c '/usr/sbin/nginx -t'
+
+# Remove PID file created during testing
+rm -f /tmp/nginx.pid
+
+# Start Nginx as nginx
+su -s /bin/sh nginx -c '/usr/sbin/nginx'
